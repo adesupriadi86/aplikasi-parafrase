@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aplikasi Parafrase Naskah</title>
+    <!-- 1. Tailwind CSS untuk styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 2. Lucide Icons untuk ikon -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <style>
+        /* 3. Font kustom */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .whitespace-pre-wrap {
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+
+    <div id="app" class="flex flex-col min-h-screen p-4 sm:p-6 lg:p-8">
+        <header class="mb-6">
+            <h1 class="text-3xl sm:text-4xl font-bold text-center text-indigo-600 dark:text-indigo-400">
+                Aplikasi Parafrase Naskah Cerita
+            </h1>
+            <p class="text-center text-gray-500 dark:text-gray-400 mt-2">
+                CHANEL REFERENSI: KISAH SINTA.
+            </p>
+        </header>
+        
+        <main class="flex flex-col lg:flex-row flex-grow w-full max-w-7xl mx-auto gap-6">
+            
+            <div class="flex-grow flex flex-col bg-white dark:bg-gray-800/50 rounded-lg border dark:border-gray-700 p-4 lg:order-1">
+                <nav id="nav-tabs" class="flex flex-wrap gap-2 border-b pb-3 mb-3 dark:border-gray-700"></nav>
+                <div id="content-area" class="flex-grow min-h-[400px] md:min-h-[500px] relative"></div>
+            </div>
+
+            <div class="flex flex-col justify-start p-4 bg-white dark:bg-gray-800 rounded-lg border dark:border-gray-700 lg:w-80 lg:order-2 flex-shrink-0">
+                <h3 class="text-lg font-semibold mb-4">Kontrol</h3>
+                <button id="paraphrase-btn" class="w-full flex items-center justify-center gap-3 px-6 py-3 text-white font-semibold bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-indigo-300 dark:disabled:bg-indigo-800/50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-indigo-500/50">
+                    <i data-lucide="play"></i> Mulai Parafrase
+                </button>
+                 <div id="status-container" class="text-center text-sm mt-4"></div>
+            </div>
+        </main>
+        <footer class="text-center mt-8 text-sm text-gray-500 dark:text-gray-400">
+            <p>Dibuat dengan Gemini &copy; <span id="year"></span></p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- PENTING: Masukkan API Key Anda di sini ---
+            const apiKey = 'AIzaSyD7AeVNk_Breoz3vdf3LVgcRYyhIDIp9sY';
+
+            const paraphraseBtn = document.getElementById('paraphrase-btn');
+            const navTabsContainer = document.getElementById('nav-tabs');
+            const contentArea = document.getElementById('content-area');
+            const statusContainer = document.getElementById('status-container');
+            document.getElementById('year').textContent = new Date().getFullYear();
+            
+            let originalTitle = '';
+            let originalScript = '';
+            let paraphrases = {};
+            let activeTab = 'original';
+            let isLoading = false;
+            
+            const channels = [
+                { id: 'bisik_semesta', name: 'Bisik Semesta', icon: 'wind' },
+                { id: 'kalam_sunyi', name: 'Kalam Sunyi', icon: 'moon' },
+                { id: 'suara_jiwa', name: 'Suara Jiwa', icon: 'heart' },
+                { id: 'renung_senja', name: 'Renung Senja', icon: 'sunset' },
+            ];
+
+            const countWords = (str) => str ? str.trim().split(/\s+/).filter(Boolean).length : 0;
+
+            const copyToClipboard = (text, tabId) => {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    const copyButton = document.querySelector(`button[data-copy-id="${tabId}"]`);
+                    if(copyButton) {
+                        const originalContent = copyButton.innerHTML;
+                        copyButton.innerHTML = `<i data-lucide="check" class="w-4 h-4 mr-2"></i> Tersalin!`;
+                        lucide.createIcons();
+                        setTimeout(() => {
+                           copyButton.innerHTML = originalContent;
+                           lucide.createIcons();
+                        }, 2000);
+                    }
+                } catch (err) { console.error('Gagal menyalin:', err); }
+                document.body.removeChild(textArea);
+            };
+
+            const handleParaphrase = async () => {
+                if (apiKey === 'MASUKKAN_API_KEY_ANDA_DI_SINI') {
+                    renderUI({ error: "API Key belum dimasukkan di dalam kode. Silakan edit file HTML-nya terlebih dahulu." });
+                    return;
+                }
+                if (!originalTitle.trim() || !originalScript.trim()) {
+                    renderUI({ error: "Judul dan Naskah Asli tidak boleh kosong." });
+                    return;
+                }
+                
+                isLoading = true;
+                paraphrases = {};
+                renderUI({ error: null });
+
+                const originalWordCount = countWords(originalScript);
+
+                for (const channel of channels) {
+                    try {
+                        renderUI({ currentChannel: `Memproses untuk: ${channel.name}...` });
+                        
+                        const prompt = `Anda adalah seorang penulis skenario yang kreatif dan ahli membuat judul clickbait. Tugas Anda adalah memparafrasekan naskah dan judul cerita berikut untuk sebuah kanal YouTube bernama "${channel.name}".
+
+Ketentuan:
+1.  **Judul**: Buat judul baru yang sangat clickbait dan sedikit berbeda dari judul asli.
+2.  **Parafrase Naskah**: Ganti semua nama tokoh dan nama tempat dengan yang baru dan imajinatif.
+3.  **Gaya Bahasa**: Harus sesuai dengan nuansa kanal "${channel.name}" (misalnya, puitis, reflektif, mendalam, misterius).
+4.  **PENTING - Jumlah Kata**: Jumlah kata dari naskah yang diparafrase (tanpa menghitung judul) HARUS SAMA PERSIS dengan jumlah kata naskah asli. Jumlah kata naskah asli adalah ${originalWordCount} kata.
+5.  **Alur Cerita**: Pastikan alur cerita utama tetap sama.
+6.  **Format Output**: Hasil akhir HARUS dalam format berikut, pisahkan judul dan naskah dengan "---":
+    Judul Baru yang Clickbait
+    ---
+    Isi naskah yang sudah diparafrase...
+
+Judul Asli:
+${originalTitle}
+
+Naskah Asli:
+---
+${originalScript}
+---`;
+
+                        const payload = {
+                            contents: [{ role: "user", parts: [{ text: prompt }] }],
+                            safetySettings: [
+                                { "category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE" },
+                                { "category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE" },
+                                { "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE" },
+                                { "category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE" }
+                            ]
+                        };
+                        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+                        
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const result = await response.json();
+                        
+                        if (response.ok && result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
+                            paraphrases[channel.id] = result.candidates[0].content.parts[0].text;
+                        } else {
+                            if (result.error) {
+                                throw new Error(`[${result.error.code}] ${result.error.message}`);
+                            } else if (result.promptFeedback?.blockReason) {
+                                throw new Error(`Konten diblokir karena: ${result.promptFeedback.blockReason}`);
+                            } else {
+                                throw new Error("Gagal mendapatkan respons dari AI. Struktur data tidak terduga.");
+                            }
+                        }
+                    } catch (e) {
+                        isLoading = false;
+                        const friendlyErrorMessage = `<p class="font-semibold">Gagal pada "${channel.name}"</p><p class="text-sm mt-1">Coba periksa hal berikut:</p>`;
+                        const errorDetailsList = `
+                            <ul class="list-disc list-inside text-left text-sm mt-2">
+                                <li><b>Pastikan API Key Anda benar</b> dan masih aktif.</li>
+                                <li><b>Coba ubah beberapa kalimat</b> dalam naskah asli Anda.</li>
+                                <li>Periksa kembali koneksi internet Anda.</li>
+                            </ul>
+                            <p class="text-xs text-gray-500 mt-2">Detail Teknis: ${e.message}</p>`;
+                        renderUI({ error: friendlyErrorMessage + errorDetailsList });
+                        return;
+                    }
+                }
+                
+                isLoading = false;
+                activeTab = channels[0].id;
+                renderUI({ currentChannel: '' });
+            };
+            
+            const renderUI = (updates = {}) => {
+                if (updates.error !== undefined) statusContainer.innerHTML = updates.error ? `<div class="text-red-600 dark:text-red-400 p-3 bg-red-100 dark:bg-red-900/40 rounded-md">${updates.error}</div>` : '';
+                if (updates.currentChannel !== undefined) {
+                    if (updates.currentChannel) {
+                        statusContainer.innerHTML = `<p class="text-indigo-500 dark:text-indigo-400 animate-pulse">${updates.currentChannel}</p>`;
+                    } else if (!updates.error) {
+                        statusContainer.innerHTML = '';
+                    }
+                }
+                
+                paraphraseBtn.disabled = isLoading || !originalScript.trim() || !originalTitle.trim();
+                paraphraseBtn.innerHTML = isLoading 
+                    ? `<i data-lucide="loader-circle" class="animate-spin w-5 h-5"></i> Sedang Memproses...`
+                    : `<i data-lucide="play" class="w-5 h-5"></i> Mulai Parafrase`;
+
+                navTabsContainer.innerHTML = '';
+                const navItems = [{ id: 'original', name: 'Naskah Asli', iconName: 'pen-square'}, ...channels.map(c => ({ id: c.id, name: c.name, iconName: c.icon }))];
+                navItems.forEach(item => {
+                    const button = document.createElement('button');
+                    button.dataset.tabId = item.id;
+                    button.disabled = isLoading || (item.id !== 'original' && !paraphrases[item.id]);
+                    button.className = `px-3 sm:px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 flex items-center gap-2 ${activeTab === item.id ? 'bg-indigo-600 text-white shadow-md' : 'text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`;
+                    button.innerHTML = `<i data-lucide="${item.iconName.toLowerCase()}" class="w-5 h-5"></i> ${item.name}`;
+                    navTabsContainer.appendChild(button);
+                });
+
+                contentArea.innerHTML = '';
+                if (activeTab === 'original') {
+                    contentArea.innerHTML = `
+                        <div class='h-full flex flex-col gap-4'>
+                            <div>
+                                <label for="original-title-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Judul Asli</label>
+                                <input type="text" id="original-title-input" class="w-full p-2 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-indigo-500" placeholder="Masukkan judul asli di sini..." value="${originalTitle}">
+                            </div>
+                            <div class='h-full flex flex-col flex-grow'>
+                                <label for="original-script-area" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Naskah Cerita</label>
+                                <textarea id="original-script-area" class="w-full h-full p-4 border rounded-lg bg-gray-50 dark:bg-gray-800 dark:text-gray-200 resize-none focus:ring-2 focus:ring-indigo-500">${originalScript}</textarea>
+                                <p class="text-right text-sm text-gray-500 mt-2 pr-1">Jumlah Kata: ${countWords(originalScript)}</p>
+                            </div>
+                        </div>`;
+                } else {
+                    const content = paraphrases[activeTab] || "Konten parafrase akan muncul di sini.";
+                    const scriptPart = content.includes('---') ? content.split('---').slice(1).join('---').trim() : content;
+                    const wordCount = countWords(scriptPart);
+
+                    contentArea.innerHTML = `<div class="relative h-full"><div class="absolute top-2 right-2 z-10"><button data-copy-id="${activeTab}" class="flex items-center px-3 py-2 text-sm bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 rounded-md" ${!paraphrases[activeTab] ? 'disabled' : ''}><i data-lucide="copy" class="w-4 h-4 mr-2"></i> Salin Naskah</button></div><div class="w-full h-full p-4 border rounded-lg bg-white dark:bg-gray-900 overflow-y-auto whitespace-pre-wrap">${content}</div><p class="text-right text-sm text-gray-500 mt-2 pr-1">Jumlah Kata Naskah: ${wordCount}</p></div>`;
+                }
+                lucide.createIcons();
+            };
+            
+            paraphraseBtn.addEventListener('click', handleParaphrase);
+
+            navTabsContainer.addEventListener('click', e => {
+                const button = e.target.closest('button[data-tab-id]');
+                if (button && !button.disabled) { 
+                    activeTab = button.dataset.tabId;
+                    renderUI(); 
+                }
+            });
+
+            contentArea.addEventListener('click', e => {
+                const button = e.target.closest('button[data-copy-id]');
+                if (button && paraphrases[button.dataset.copyId]) {
+                    copyToClipboard(paraphrases[button.dataset.copyId], button.dataset.copyId);
+                }
+            });
+            
+            contentArea.addEventListener('input', e => {
+                if (e.target && e.target.id === 'original-script-area') {
+                    originalScript = e.target.value;
+                    const wordCountP = contentArea.querySelector('.text-right');
+                    if(wordCountP) { wordCountP.textContent = `Jumlah Kata: ${countWords(originalScript)}`; }
+                }
+                if (e.target && e.target.id === 'original-title-input') {
+                    originalTitle = e.target.value;
+                }
+                paraphraseBtn.disabled = isLoading || !originalScript.trim() || !originalTitle.trim();
+            });
+
+            renderUI();
+        });
+    </script>
+</body>
+</html>
